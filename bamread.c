@@ -15,7 +15,7 @@ static unsigned int RCtable[256] = {
         4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4
 };
 
-#include "../indels_shared/indelcigar.c"
+#include "indels/indelcigar.c" // shared indel functions 
 
 // works in-situ on same sequence
 void RC(char* sequence,char* revsequence,int l)

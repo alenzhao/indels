@@ -5,7 +5,7 @@
 #include<stdlib.h>
 #include<string.h>
 #include<ctype.h>
-#include "../readfasta.h"
+#include "readfasta.h"
 
 extern int MAXMATCHES;
 extern int MAX_KMER_HITS;
