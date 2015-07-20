@@ -1,0 +1,165 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+
+\usepackage{rotating}
+\usepackage{fancybox}
+\setlength{\evensidemargin}{0in}
+%\setlength{\evensidemargin}{-0.15in}
+%\setlength{\oddsidemargin}{-0.15in}
+\setlength{\oddsidemargin}{0in}
+\setlength{\marginparwidth}{0.0in}
+\setlength{\textwidth}{6.50in}
+\setlength{\textheight}{8.6in}
+%\setlength{\topmargin}{0.55in}
+\setlength{\topmargin}{0in}
+\setlength{\headheight}{0in}
+\setlength{\headsep}{0in}
+\setlength{\columnsep}{0.20in}
+\pagestyle{plain}
+
+\newcommand{\old}[1]{}
+
+\title{EM algorithm for indel detection and genotyping from multi-sample sequence data }
+%\author{Vikas Bansal}
+%\date{October 26 2014}
+
+\usepackage{natbib}
+\usepackage{graphicx}
+
+\begin{document}
+
+\maketitle
+
+
+\old{
+\section{Introduction}
+
+Existing methods for the detection of short indels from sequence reads~\cite{Li2011,DePristo2011,Albers2011}
+utilize read alignment scores, individual base quality scores
+and estimates of sequence-context specific indel error rates, e.g. errors in homopolymer runs, to calculate genotype likelihoods
+and call indels. The methods that we describe here use information about 
+indel error rates present in the sequence data itself to distinguish true indels from sequencing errors and other artifacts.
+Since indel errors observed in the sequence reads are likely to be
+context-specific, e.g. insertion/deletion of a one or more bases in homopolymer runs, pooling information from multiple individuals to estimate the indel error rates at each specific position and calculating genotype likelihoods using these estimated error rates is a powerful approach for indel detection.
+}
+
+
+\section{METHODS}
+
+Given sequence data from multiple individuals, context-specific or systematic errors, e.g. indel errors in homopolymer runs are likely to be
+consistent across samples at a given position if the samples are sequenced using the same protocol and platform.
+Therefore, we propose to jointly model the unknown genotypes and
+context-specific error rates, find the maximum
+likelihood estimates of the error rates using the observed data and use these estimates to call indels and assign genotypes
+to each individual at a potential indel site in a probabilistic framework.
+This idea can be adapted to identify indels in individual genomes by
+pooling information from multiple sites across the genome that share a `similar` sequence context.
+For this, we jointly model the genotypes across multiple sites in the same individual (in contrast to multiple individuals at the same
+site) and the context-specific indel error rates.
+
+\subsection{Mathematical model}
+
+We consider a set of genomic loci that have been resequenced in a
+population of $n$ diploid individuals. Our objective is to identify positions which at least one of the $2n$ haplotypes harbors an insertion/deletion of one or more bases. Calculation of genotype likelihoods requires estimates of sequencing error rates or the probability of mis-reading a given allele as another. If pre-calculated estimates for these error probabilites are available, we can simply use them to calculate genotype likelihoods. If sequence reads from a sufficient number of individuals are available, we can estimate the error probabilities directly.
+
+\begin{itemize}
+\item For each site, we denote the reference allele or haplotype by $A_0$ and the alternate alleles as $(A_1, A_2, \ldots A_{k-1})$. Therefore, each site has a maximum of $k$ alleles.  $k$ can be determined empirically from the aligned set of reads. 
+%Most variants are bi-allelic, however indels in homopolymer runs can be multi-allelic and we are likely to observe reads that support multiple variant alleles. 
+
+\item For $k$ alleles, there are $k \choose 2$ heterozygous genotypes and $k$ homozygous genotypes possible for a total of $k(k+1)/2$ genotypes per individual
+
+%\item Given aligned sequence data from $n$ individuals, we denote the ordered set of population genotypes by $G = [G_1,G_2,\ldots,G_n]$. 
+
+\item $R_i (1\leq i \leq n)$ is the set of aligned reads that cover the given site for individual $i$. We denote $D = (R_1,R_2\ldots, R_n)$ as the set of sequence reads for all individuals. For an individual $i$, we denote by $r_{ij}$ as the number of reads with the observed allele equal to $A_j$
+
+\item We model the unknown error rates at each position using a matrix $E$ where $E_{ij}$ represents the probability of observing the allele $A_j$ in a sequence read when the true underlying allele is $A_i$. For now, we assume that these error rates are the same for each individual. Note that there is also a probabilistic term associated with the sequence alignment for each read which can be incorporated into the likelihood calculation. 
+
+\item We define the allele frequency vector $P = (p_0,p_1\ldots p_k)$ where $p_i$ is the unknown frequency of the allele $A_i$ in the population (assuming all individuals are sampled from the same population). 
+
+\item Our objective is to determine the likelihood for the presence of an indel variant at a potential variant site 
+
+\end{itemize}
+
+First, we define the genotype likelihoods for individual $i$ as follows: 
+ 
+\begin{equation} 
+ Pr(R_i|G_i=(00),E) = \prod_{r \in R_i} Pr(r|G_i = (00), E) = (e_{00})^{r_{i0}} (e_{01})^{r_{i1}} (e_{02})^{r_{i2}} (e_{03})^{r_{i3}}
+ \end{equation} 
+
+%where $r_{ij}$ is the number of reads with allele $j$. 
+ 
+\begin{equation} 
+ Pr(R_i|G_i=(01),E) = {[he_{00} + (1-h)e_{10}]}^{r_{i0}} {[(1-h)e_{11} + (h) e_{01}]}^{r_{i1}} {[he_{02} + (1-h) e_{12}]}^{r_{i2}} {[he_{03} + (1-h) e_{13}]}^{r_{i3}}
+ \end{equation}
+ 
+Here $h$ is the probability of sampling a read from the reference allele and $(1-h)$ is the probability of sampling the allele $A_1$. For SNPs, $h = 0.5$ assuming equal probability of sampling the two alleles. 
+ The likelihoods for genotypes $G_i = (02), (03), (11), (12), (13), (22), (33)$ can be defined using the above two equations (1) and (2). 
+Using Bayes rule, we can define the posterior probability of the genotype for an individual $i$ as: 
+
+\begin{equation} Pr(G_i = g | R_i) = \frac{Pr(R_i | G_i = g, E) Pr(G_i = g)}{\sum_g Pr(R_i | G_i = g, E) Pr(G_i = g)} 
+\end{equation}
+
+To define the prior probability of each genotype, we introduce the population allele frequency parameter $p_i$ for each allele $A_i$ where $\sum_{i=1}^k p_i = 1$. Therefore, we can define the likelihood of the reads for all individuals conditional on the matrix $E$ of error probabilities and the allele frequency vector $P = (p_0,p_1\ldots p_k)$ as: 
+
+\begin{equation}
+Pr(D | E, P) = \prod_{i=1}^n Pr(R_i | E,P) = \prod_{i=1}^n \sum_g [Pr(R_i |G_i =g, E)Pr(G_i=g|P)] 
+\end{equation}
+
+We already defined $Pr(R_i |G_i =g, E)$ in equations (1) and (2) for each potential genotype $g$. The prior probabilities $Pr(G_i = g | P)$ are defined assuming Hardy-Weinberg equilibrium (HWE) as: 
+
+\[ Pr(G_i = 00 | P) = {p_0}^2, \mbox { } Pr(G_i = 01 | P) = 2p_0p_1, \mbox{ } Pr(G_i = 02  | P) = 2p_0p_2 \ldots \] 
+In general, 
+
+\[ Pr(G_i = aa | P) = {p_a}^2 \mbox { and }  Pr(G_i = ab | P) = 2p_ap_b \mbox { if } a \neq b \] 
+
+
+From equation (4) we can see that the joint likelihood of the data for all individuals can be decomposed into the product of the sum over the genotype likelihoods for each individual {\it conditional} on the error matrix $E$ and the population allele frequency vector $P$. These two unknown variables link the data for the $n$ individuals together. Therefore, we can use an EM algorithm to obtain a maximum likelihood estimate of these two parameters. The hidden or latent variables are the genotypes $G_i$ for each individual. 
+
+\paragraph{E-step:} Given the current estimates of $E$ and $P$, we calculate the posterior genotype probabilities for each individual as defined in equation (3).
+
+\paragraph{M-step:} We need to calculate the maximum likelihood estimates of $P$ and $E$ using the probability distribution over the latent variables $G_i$. For the allele frequencies, the expected value of the genotype for each individual can be used to obtain a ML estimate for the allele frequency $p_a$: 
+
+\[ p_a = \sum_{i=1}^n \frac{   Pr(G_i = (aa) | R_i) + 0.5 \times \sum_{b \neq a} Pr(G_i = (ab)| R_i)}{n} \] 
+%The allele frequencies for the alleles $p_0, p_2 \ldots, p_k$ can be defined in a similar manner. 
+
+\paragraph{Calculating ML estimate of $E$:} Calculating the error rate matrix $E$ is more involved. For each read $r$ obtained from sequencing of an individual, the observed allele at the variant site can be one of $A_0, A_1, \ldots, A_k$. If the observed allele is different from the set of alleles being considered as variant, we discard the read from the likelihood calculations. 
+Similarly, the true underlying sequence (unobserved) or allele of read $r$ can be one of the $k$ possible alleles. 
+%To estimate $E$, we consider an additional missing variable $r_t$ for each read, the true underlying allele for read $r$. 
+%Similarly, we denote the observed allele at the variant site in read $r$ by $r_o$. 
+We would like to estimate the expected number of reads (the expectation is over the posterior distribution of the genotypes for each individual calculated using the previous estimates of $e_{ij}$) for which the true underlying allele equals $A_a$ and 
+observed allele also equals $A_a$. We define this sum as $T_{aa}$ and calculate it as follows: 
+
+\[ T_{aa} = \sum_{i=1}^n \left[ r_{ia}e_{aa}Pr(G_i = (aa) | R_i) + \sum_{b=0, b \neq a}^k r_{ia}(he_{aa} + (1-h)e_{ba}) Pr(G_i = (ab)| R_i)\right] \] 
+where $h$ is the probability that a random read samples the allele $A_a$ in a heterozygous individual $(G_i = ab)$. We can assume h = 0.5 except if $a$ is the reference allele $A_0$. We can also calculate the expected number of reads with the true allele as $A_a$ and the observed allele as $A_b$ where $a \neq b$. 
+
+\[ T_{ab} = \sum_{i=1}^n \left[ r_{ib}e_{ab}Pr(G_i = (aa) | R_i) + \sum_{c=0, c \neq b, c \neq a }^k r_{ic}he_{ac} Pr(G_i = (ac)| R_i)  +  \frac{r_{ib}he_{ab}}{he_{ab} + (1-h)e_{bb}} Pr(G_i = (ab)| R_i) \right] \] 
+
+%\[ T_{01} = \sum_{i=1}^n r_{i1}e_{00}Pr(G_i = (00) | R_i) + \sum_{j=1}^k r_{i0}e_{0k} Pr(G_i = (0k)| R_i) \] 
+
+Therefore, we can calculate the matrix of expected sums $T_{ab}, 0 \leq a,b \leq k$ which has the same dimensions as the error matrix $E$. Once we have calculated the $T$ matrix, estimating the new values of the error probabilities is straightforward: 
+
+\[ {e_{ab}}^* = \frac{T_{ab}} { \sum_{c=0}^k T_{ac} } \]
+
+We still need to formally prove that the formula for $e_{ab}$ represents the maximum likelihood estimate given the posterior genotype likelihoods and the error probabilities calculated in the previous round of the EM algorithm. But, intuitively these calculations make sense. 
+
+
+\subsection{Implementation of the EM algorithm:} For an actual implementation of the algorithm, there are several open questions: 
+
+\begin{itemize}
+\item How to initialize the parameters $p$ and $E$
+\item How to determine if the EM algorithm has converged to a 'good' ML estimate, there could be multiple maxima some of which could have high values of the error rates 
+\item How to reduce the number of variables in the error matrix $E$ for which enough information is not available or which are not important for the final calculation
+\item How to incorporate strand-specific read counts and error rates into the calculations (separate parameters for each strand) but this could result in too many parameters 
+\item how to incorporate heterogeneity in error rates across individuals 
+
+\end{itemize}
+
+
+% references 
+
+% http://nar.oxfordjournals.org/content/early/2012/10/22/nar.gks981.full paper on microsatellite genotyping using pre-computer error rates 
+
+%http://www.biomedcentral.com/1471-2164/14/S1/S1 A unified approach for allele frequency estimation, SNP detection and association studies based on pooled sequencing data using EM algorithms
+
+
+\end{document}
