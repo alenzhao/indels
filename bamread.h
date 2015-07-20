@@ -9,7 +9,7 @@
 #include "sam.h"
 
 extern int QVoffset;
-
+extern int STRICT_REFMATCH;
 extern char INT_CIGAROP[];
 
 struct alignedread

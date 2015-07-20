@@ -1,6 +1,6 @@
 /* code for indel split-read-mapping similar to BLAT, translated from SAM input to BAM input format on january 5 2013, 
- author Vikas Bansal
-*/
+   author Vikas Bansal
+ */
 
 #include<math.h>
 #include<time.h>
@@ -40,7 +40,10 @@ void read_stats(struct alignedread* read1,int* lq1,int* missing1)
 //for (i=read->readlength-kmertable->kmer;i<read->readlength;i++) shortseq[i-l+kmertable->kmer] = sequence[i]; 
 // standard sorted bam file, mates are not together but unmapped mates should be next to mapped mate 
 // the only value we need is the mapping quality of the mates of unmapped reads 
- // CRUCIAL: need to set read->mtid and read->mateposition since these are used to allocate new kmertable
+// CRUCIAL: need to set read->mtid and read->mateposition since these are used to allocate new kmertable
+
+
+// CODE does not work for single-end reads... although SINGLE_READS ==0 flag is used... 10/02/2014 | set insert size and mate position for single-reads to allow for mapping 
 int getnextread(samfile_t *fp,bam1_t* b1,bam1_t* b2,struct alignedread* read1,char* alignment)
 {
 	int readfound = 0; int i=0,missing1=0,lq1 = 0;
@@ -49,28 +52,58 @@ int getnextread(samfile_t *fp,bam1_t* b1,bam1_t* b2,struct alignedread* read1,ch
 	{
 		if ( (b1->core.flag & 1) ==0 && SINGLE_READS ==0) continue; // discard single end reads 
 		fetch_func(b1,fp,read1); // this allocates memory that needs to be freed 
-	
+
 		alignment[0] = '-'; alignment[1] = '\0'; 	
 		if ((read1->flag & 4) ==0 && read1->mquality >= MIN_MQ) // read is mapped and has high mapping quality
 		{
 			read_stats(read1,&lq1,&missing1);  
 			// clipped but treating as unmapped, should enforce constraint on matepair being mapped as well jan 5 2013
 			// require the insert size to be within the maxlimit, important
-                        if ((read1->clipped-read1->XC >= 5 || read1->gaps >1) && abs(read1->IS) > 0 && abs(read1->IS) < MAX_IS + MAXDEL+read1->readlength)
+
+			if ( (b1->core.flag & 1) ==0 && SINGLE_READS ==1 && b1->core.flag < 18) // primary single read mapping 
 			{
-				//if (read1->tid >= 0) fprintf(stderr,"BUG flag %s %d %s %d\n",read1->readid,read1->position,read1->sequence,read1->IS);
-				//read1->mtid = read1->tid; // if the mate is unmapped, don't want to cause error
-				if ((float)missing1/read1->readlength <= 0.05)
+				if( read1->clipped-read1->XC >= 5 && (float)missing1/read1->readlength <= 0.05)
 				{
-					strcpy(alignment,"CLIPPED"); readfound = 1; 
+					if (read1->flag ==0)// && (read1->cigarlist[0]&0xf) == BAM_CSOFT_CLIP) // 40S30M on + strand
+					{
+						read1->flag += 64; read1->flag +=32; read1 ->flag += 3; 
+						read1->mtid = read1->tid; read1->mateposition = read1->position + 300; 
+						read1->IS = 300+read1->readlength;
+						//fprintf(stderr,"fake read %s %d %d \n",read1->readid,read1->position,read1->flag);
+					} 
+					else if (read1->flag ==16)// && (read1->cigarlist[0]&0xf) == BAM_CSOFT_CLIP) // 40S30M on + strand
+					{
+						read1->flag += 128; read1->flag += 3; 
+						read1->mtid = read1->tid; read1->mateposition = read1->position - 300; 
+						read1->IS = -1*(300 + read1->readlength);
+						//fprintf(stderr,"fake read %s %d %d \n",read1->readid,read1->position,read1->flag);
+					} 
+					strcpy(alignment,"CLIPPED"); readfound = 1;
+				}
+				else if (read1->gaps > 0 && lq1 <= 0.5*read1->readlength) 
+				{
+					read1->mateposition = read1->position; strcpy(alignment,"GAPPED"); readfound = 1;
 				}
 			}
-			else if (read1->gaps > 0 && lq1 <= 0.5*read1->readlength) 
+
+			else if ((b1->core.flag & 1) ==1) // paired-end read 
 			{
-				//read1->mtid = read1->tid; 
-				read1->mateposition = read1->position; // if the mate is unmapped, don't want to cause error
-				strcpy(alignment,"GAPPED"); readfound = 1;
-				//fprintf(stdout,"%s\t%s\t%c\t%d\t%s\t%d\tGAPPED:%s:%d\n",read1->readid,read1->sequence,read1->strand,read1->chrom,read1->position,read1->mquality,read1->matechrom,read1->mateposition);
+				if ((read1->clipped-read1->XC >= 5 || read1->gaps >1) && abs(read1->IS) > 0 && abs(read1->IS) < MAX_IS + MAXDEL+read1->readlength)
+				{
+					//if (read1->tid >= 0) fprintf(stderr,"BUG flag %s %d %s %d\n",read1->readid,read1->position,read1->sequence,read1->IS);
+					//read1->mtid = read1->tid; // if the mate is unmapped, don't want to cause error
+					if ((float)missing1/read1->readlength <= 0.05)
+					{
+						strcpy(alignment,"CLIPPED"); readfound = 1; 
+					}
+				}
+				else if (read1->gaps > 0 && lq1 <= 0.5*read1->readlength) 
+				{
+					//read1->mtid = read1->tid; 
+					read1->mateposition = read1->position; // if the mate is unmapped, don't want to cause error
+					strcpy(alignment,"GAPPED"); readfound = 1;
+					//fprintf(stdout,"%s\t%s\t%c\t%d\t%s\t%d\tGAPPED:%s:%d\n",read1->readid,read1->sequence,read1->strand,read1->chrom,read1->position,read1->mquality,read1->matechrom,read1->mateposition);
+				}
 			}
 		}
 		else if ( (read1->flag & 4) ==4 && (read1->flag & 8) ==0 && (read1->tid < 0 || read1->tid == read1->mtid)) // read is unmapped but mate is mapped
@@ -85,7 +118,7 @@ int getnextread(samfile_t *fp,bam1_t* b1,bam1_t* b2,struct alignedread* read1,ch
 			}
 			if ((float)missing1/read1->readlength <= 0.05 && matemq >= MIN_MQ) 
 			{
-			//	fprintf(stderr,"unmapped read \n");
+				//	fprintf(stderr,"unmapped read \n");
 				read1->strand = '+'; if ((read1->flag & 32) == 32) read1->strand = '-'; // mate strand
 				read1->mquality = matemq;  strcpy(alignment,"X"); 	
 				readfound =1;
@@ -124,14 +157,14 @@ int splitreadanalysis_direct(char* bamfile,REFLIST* reflist,KMERTABLE* kmertable
 	char alignment[256];         int* fcigarlist = (int*)malloc(sizeof(int)*4096);
 	int windows_analyzed=0;
 	int newmapping =0; // 1 if split read mapping finds a better alignment than original read alignment
-	
+
 
 	samfile_t *fp;
-        if ((fp = samopen(bamfile, "rb", 0)) == 0)
-        {
-                fprintf(stderr, "Fail to open BAM file %s\n", bamfile); return -1;
-        }
-        bam1_t *b1 = bam_init1();  bam1_t *b2 = bam_init1();  
+	if ((fp = samopen(bamfile, "rb", 0)) == 0)
+	{
+		fprintf(stderr, "Fail to open BAM file %s\n", bamfile); return -1;
+	}
+	bam1_t *b1 = bam_init1();  bam1_t *b2 = bam_init1();  
 	// need to check that bam header matches that of reference fasta header...
 
 	while (getnextread(fp,b1,b2,read,alignment) == 1)  // get next candidate read for split-read mapping, if read is unmapped, read->tid set using mate
@@ -177,7 +210,7 @@ int splitreadanalysis_direct(char* bamfile,REFLIST* reflist,KMERTABLE* kmertable
 		else 
 		{
 			if (alignment[0] != 'X') parse_cigar(read,reflist,fcigarlist); 
-			
+
 			newmapping =0;
 			if (alignment[0] != 'G' && SPLITMAP ==1) 
 			{
@@ -195,7 +228,7 @@ int splitreadanalysis_direct(char* bamfile,REFLIST* reflist,KMERTABLE* kmertable
 	print_clusters(indelreadlist,indelreads,reflist,PRINT_PARTIAL,outfp);
 
 	if (chromosome >=0) free(reflist->sequences[chromosome]);
-        bam_destroy1(b1); bam_destroy1(b2); samclose(fp);
+	bam_destroy1(b1); bam_destroy1(b2); samclose(fp);
 	return 1;
 }
 
@@ -204,6 +237,7 @@ int main(int argc, char* argv[])
 	char outfile[1024]; char bamfile[1024]; char fastafile[1024]; char bedfile[1024]; bam_regions = NULL;
 	strcpy(bamfile,"None"); strcpy(fastafile,"None"); strcpy(outfile,"None"); strcpy(bedfile,"None");
 	int i=0;
+	int kmer = 9; int kmer1 = 8; int chunksize = 65536; // 4^8
 	for (i=1;i<argc;i+=2)
 	{
 		if (strcmp(argv[i],"--bam") ==0 || strcmp(argv[i],"--bamfile") ==0)        strcpy(bamfile,argv[i+1]);
@@ -212,13 +246,17 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[i],"--mmq") ==0)       MIN_MQ = atoi(argv[i+1]);
 		else if (strcmp(argv[i],"--maxIS") ==0)       MAX_IS = atoi(argv[i+1]);
 		else if (strcmp(argv[i],"--maxdelsize") ==0)       MAXDEL = atoi(argv[i+1]);
+		else if (strcmp(argv[i],"--maxdel") ==0)       MAXDEL = atoi(argv[i+1]);
 		else if (strcmp(argv[i],"--qvoffset") ==0)       QVoffset = atoi(argv[i+1]);
 		else if (strcmp(argv[i],"--pflag") ==0)       PFLAG = atoi(argv[i+1]);
+		else if (strcmp(argv[i],"--chunksize") ==0)       chunksize = atoi(argv[i+1]);
+		else if (strcmp(argv[i],"--kmer") ==0)       kmer = atoi(argv[i+1]);
+		else if (strcmp(argv[i],"--kmer1") ==0)       kmer1 = atoi(argv[i+1]);
 		else if (strcmp(argv[i],"--split") ==0)       SPLITMAP = atoi(argv[i+1]);
 		else if (strcmp(argv[i],"--singlereads") ==0)       SINGLE_READS = atoi(argv[i+1]);
 		else if (strcmp(argv[i],"--minreads") ==0)       MIN_READS_FOR_INDEL = atoi(argv[i+1]);
 		else if (strcmp(argv[i],"--bed") ==0)   strcpy(bedfile,argv[i+1]);
-		
+
 		else if (strcmp(argv[i],"--regions") ==0)       
 		{
 			bam_regions = (char*)malloc(strlen(argv[i+1])+1);   strcpy(bam_regions,argv[i+1]);
@@ -238,9 +276,9 @@ int main(int argc, char* argv[])
 	int bh = validate_bam_header(bamfile,reflist); if (bh ==0) return 0; 
 
 	TARGETED = 0; if (strcmp(bedfile,"None") != 0 && read_bedfile(bedfile,reflist) != -1) TARGETED= 1;
-	
 
-        FILE* fastafp = fopen(fastafile,"r");
+
+	FILE* fastafp = fopen(fastafile,"r");
 
 	//if (reflist != NULL) read_fasta(fastafile,reflist); 
 	fprintf(stderr,"finished reading reference sequence \n");
@@ -248,8 +286,7 @@ int main(int argc, char* argv[])
 	FILE* outfp = stdout; if (strcmp(outfile,"None") !=0) outfp = fopen(outfile,"wb"); 
 
 	// maximum of two hashtables. // chunksize can be small since complexity is independent of chunksize !!
-        //int kmer = 10; int kmer1 = 8; int chunksize = 200000; 
-	int kmer = 9; int kmer1 = 8; int chunksize = 65536; // 4^8
+	//int kmer = 10; int kmer1 = 8; int chunksize = 200000; 
 	KMERTABLE* kmertable = (KMERTABLE*)malloc(sizeof(KMERTABLE)); kmertable->gap = 0; kmertable->kmer = kmer;
 	KMERTABLE* kmertable1 = (KMERTABLE*)malloc(sizeof(KMERTABLE)); kmertable1->gap = 4; kmertable1->kmer = kmer1;
 	//int tablesize = 1<<(2*kmer); double maxhitsforseed = (double)(chunksize+100000)*16/tablesize; MAX_KMER_HITS =(int)maxhitsforseed;

@@ -1,7 +1,7 @@
 #include "bamread.h"
 char INT_CIGAROP[] = {'M','I','D','N','S','H','P','E','X'};
 
-
+int STRICT_REFMATCH =0;
 int QVoffset = 33;
 
 static unsigned int RCtable[256] = {
@@ -240,17 +240,29 @@ int validate_bam_header(char* bamfile,REFLIST* reflist)
 		fprintf(stderr,"Cannot open %s\n",bamfile);
 		return -1;
 	}
-	int i=0; int valid = 1;
+	int i=0; int valid = 1; int mismatches = 0;
 	header= bam_header_read(fp1); //fprintf(stderr,"targets %d \n",header->n_targets); 
 	if (header->n_targets != reflist->ns) 
 	{
 		fprintf(stderr,"number of sequences in bam reference header (%d) does not match reference fasta file (%d) \n",header->n_targets,reflist->ns);
 		fprintf(stdout,"##########################################\n");
 		for (i=0;i<header->n_targets && i < reflist->ns && i < 10;i++) fprintf(stderr,"name %s %d ref %s %d\n",header->target_name[i],header->target_len[i],reflist->names[i],reflist->lengths[i]);
-		fprintf(stdout,"##########################################\n");
-		fprintf(stderr,"please make sure the reference fasta file is the same as the one used to generate BAM file\n\n");
-		//for (i=0;i<reflist->ns;i++) fprintf(stderr,"name %s %d \n",reflist->names[i],reflist->lengths[i]);
-		valid = 0;
+		for (i=0;i<header->n_targets && i < reflist->ns && i < 10;i++) 
+		{
+			if (strcmp(header->target_name[i],reflist->names[i]) !=0 || header->target_len[i] != reflist->lengths[i]) mismatches++;
+		}
+		if (mismatches > 0 || STRICT_REFMATCH ==1)
+		{
+			fprintf(stdout,"##########################################\n");
+			fprintf(stderr,"please make sure the reference fasta file is the same as the one used to generate BAM file, mismatches %d\n\n",mismatches);
+			//for (i=0;i<reflist->ns;i++) fprintf(stderr,"name %s %d \n",reflist->names[i],reflist->lengths[i]);
+			valid = 0;
+		}
+		else
+		{
+			fprintf(stdout,"##########################################\n");
+		        fprintf(stderr,"partial match of fasta files, continue ?\n\n");
+		}
 	}
 	else 
 	{
